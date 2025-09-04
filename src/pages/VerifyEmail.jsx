@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { CheckCircleIcon, XCircleIcon } from '@heroicons/react/24/outline';
@@ -11,6 +11,7 @@ const VerifyEmail = () => {
   const [message, setMessage] = useState('');
   const [email, setEmail] = useState('');
   const [showResendForm, setShowResendForm] = useState(false);
+  const hasRequestedRef = useRef(false);
 
   useEffect(() => {
     const verifyEmail = async () => {
@@ -18,26 +19,28 @@ const VerifyEmail = () => {
         const response = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/auth/verify-email/${token}`);
         setStatus('success');
         setMessage(response.data.message);
-        
-        // Redirect to login after 3 seconds
+
         setTimeout(() => {
           navigate('/login');
         }, 3000);
       } catch (error) {
+        // If we've already succeeded once, ignore subsequent errors (e.g., due to StrictMode double-call)
+        if (status === 'success') return;
         setStatus('error');
         setMessage(error.response?.data?.error || 'Email verification failed');
-        
-        // If token is expired, show resend option
+
         if (error.response?.data?.error?.includes('expired')) {
           setShowResendForm(true);
         }
       }
     };
 
-    if (token) {
-      verifyEmail();
-    }
-  }, [token, navigate]);
+    if (!token) return;
+    if (hasRequestedRef.current) return;
+    hasRequestedRef.current = true;
+    verifyEmail();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   const handleResendVerification = async (e) => {
     e.preventDefault();
