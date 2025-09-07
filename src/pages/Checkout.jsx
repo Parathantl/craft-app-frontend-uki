@@ -14,7 +14,7 @@ import {
 const Checkout = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
-  const { cart, clearCart, cartTotal } = useCart();
+  const { items: cart, clearCart, total: cartTotal } = useCart();
   const [loading, setLoading] = useState(false);
   const [orderPlaced, setOrderPlaced] = useState(false);
   const [orderId, setOrderId] = useState(null);
@@ -120,22 +120,15 @@ const Checkout = () => {
           price: item.product.price
         })),
         totalAmount: cartTotal,
-        shippingAddress: {
-          firstName: shippingForm.firstName,
-          lastName: shippingForm.lastName,
-          email: shippingForm.email,
-          phone: shippingForm.phone,
-          address: shippingForm.address,
-          city: shippingForm.city,
-          state: shippingForm.state,
-          zipCode: shippingForm.zipCode,
-          country: shippingForm.country
-        },
+        shippingAddress: `${shippingForm.firstName} ${shippingForm.lastName}, ${shippingForm.address}, ${shippingForm.city}, ${shippingForm.state} ${shippingForm.zipCode}, ${shippingForm.country}`,
         customerName: `${shippingForm.firstName} ${shippingForm.lastName}`,
         customerEmail: shippingForm.email,
         customerPhone: shippingForm.phone,
         paymentMethod: paymentMethod
       };
+
+      console.log('Submitting order data:', orderData);
+      console.log('API URL:', `${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/orders`);
 
       // Create order with pending status
       const response = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/orders`, orderData);
@@ -156,6 +149,7 @@ const Checkout = () => {
       }
     } catch (error) {
       console.error('Order placement error:', error);
+      console.error('Error message:', error.message);
       toast.error(error.response?.data?.error || 'Failed to place order');
     } finally {
       setLoading(false);
@@ -164,9 +158,18 @@ const Checkout = () => {
 
   const initializePayHerePayment = (order) => {
     // PayHere configuration
+    const merchantId = import.meta.env.VITE_PAYHERE_MERCHANT_ID;
+    
+    if (!merchantId) {
+      toast.error('PayHere merchant ID not configured. Please contact administrator.');
+      return;
+    }
+    
+    console.log('PayHere Configuration:', { merchantId, orderId: order._id });
+    
     const payhereConfig = {
       sandbox: true, // Set to false for production
-      merchant_id: import.meta.env.VITE_PAYHERE_MERCHANT_ID || "1211000", // Replace with your merchant ID
+      merchant_id: merchantId,
       return_url: `${window.location.origin}/payment-success`,
       cancel_url: `${window.location.origin}/payment-cancel`,
       notify_url: `${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/payments/payhere-webhook`,
