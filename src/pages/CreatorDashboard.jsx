@@ -222,6 +222,18 @@ const CreatorDashboard = () => {
     return colors[status] || 'bg-gray-100 text-gray-800';
   };
 
+  const handleDeletePendingOrder = async (orderId) => {
+    if (!window.confirm('Delete this pending order? This cannot be undone.')) return;
+    try {
+      await axios.delete(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/orders/creator/${orderId}`);
+      toast.success('Order deleted');
+      fetchDashboardData();
+    } catch (error) {
+      console.error('Error deleting order:', error);
+      toast.error(error.response?.data?.error || 'Failed to delete order');
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -525,6 +537,16 @@ const CreatorDashboard = () => {
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                               {new Date(order?.createdAt).toLocaleDateString()}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
+                              {order.status === 'pending' && (
+                                <button
+                                  onClick={() => handleDeletePendingOrder(order._id)}
+                                  className="text-red-600 hover:text-red-900"
+                                >
+                                  Delete
+                                </button>
+                              )}
                             </td>
                           </tr>
                         ))}

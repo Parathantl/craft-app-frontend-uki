@@ -156,34 +156,62 @@ const Checkout = () => {
     }
   };
 
-  const initializePayHerePayment = (order) => {
+  const initializePayHerePayment = async (order) => {
     // PayHere configuration
-    const merchantId = import.meta.env.VITE_PAYHERE_MERCHANT_ID;
-    
-    if (!merchantId) {
+    const merchantIdEnv = (import.meta.env.VITE_PAYHERE_MERCHANT_ID || '').trim();
+    const isSandbox = (import.meta.env.VITE_PAYHERE_ENV || 'sandbox') === 'sandbox';
+
+    if (!merchantIdEnv) {
       toast.error('PayHere merchant ID not configured. Please contact administrator.');
       return;
     }
-    
-    console.log('PayHere Configuration:', { merchantId, orderId: order._id });
+
+    const amountStr = Number(order.totalAmount).toFixed(2);
+    const items = (order.products || [])
+      .map((item) => (item.product?.title ? item.product.title : 'Item'))
+      .join(', ') || 'Order';
+
+    const digitsPhone = (shippingForm.phone || '').replace(/\D/g, '').slice(-10) || '0770000000';
+    const retryOrderId = `${order._id}-${Date.now()}`; // visible order id can be unique per attempt
+
+    console.log('PayHere Configuration:', { merchantId: merchantIdEnv, orderId: order._id, isSandbox, amount: amountStr });
+
+    // Fetch hash from backend
+    let hash = '';
+    let merchantIdFinal = merchantIdEnv;
+    try {
+      const hashRes = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/payments/payhere-hash`, {
+        orderId: retryOrderId,
+        amount: amountStr,
+        currency: 'LKR'
+      });
+      hash = hashRes.data.hash;
+      if (hashRes.data.merchantId) {
+        merchantIdFinal = String(hashRes.data.merchantId).trim();
+      }
+    } catch (err) {
+      console.error('Error generating PayHere hash:', err);
+      toast.error('Failed to prepare payment. Please try again.');
+      return;
+    }
     
     const payhereConfig = {
-      sandbox: true, // Set to false for production
-      merchant_id: merchantId,
+      merchant_id: merchantIdFinal,
       return_url: `${window.location.origin}/payment-success`,
       cancel_url: `${window.location.origin}/payment-cancel`,
-      notify_url: `${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/payments/payhere-webhook`,
+      notify_url: `https://3e278933618c.ngrok-free.app/api/payments/payhere-webhook`,
       first_name: shippingForm.firstName,
       last_name: shippingForm.lastName,
       email: shippingForm.email,
-      phone: shippingForm.phone,
+      phone: digitsPhone,
       address: shippingForm.address,
       city: shippingForm.city,
       country: shippingForm.country,
-      order_id: order._id,
-      items: order.products.map(item => item.product.title).join(', '),
+      order_id: retryOrderId,
+      items: items,
       currency: "LKR",
-      amount: order.totalAmount,
+      amount: amountStr,
+      hash,
       custom_1: order._id, // Order ID for webhook processing
       custom_2: user._id   // User ID for webhook processing
     };
@@ -191,7 +219,7 @@ const Checkout = () => {
     // Create PayHere form and submit
     const form = document.createElement('form');
     form.method = 'POST';
-    form.action = payhereConfig.sandbox 
+    form.action = isSandbox 
       ? 'https://sandbox.payhere.lk/pay/checkout' 
       : 'https://www.payhere.lk/pay/checkout';
 

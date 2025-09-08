@@ -37,6 +37,80 @@ const Orders = () => {
     }
   };
 
+  const initializePayHerePayment = async (order) => {
+    const merchantIdEnv = (import.meta.env.VITE_PAYHERE_MERCHANT_ID || '').trim();
+    const isSandbox = (import.meta.env.VITE_PAYHERE_ENV || 'sandbox') === 'sandbox';
+    if (!merchantIdEnv) {
+      toast.error('PayHere merchant ID is not configured.');
+      return;
+    }
+
+    const amountStr = Number(order.totalAmount).toFixed(2);
+    const items = (order.products || [])
+      .map((p) => (p.product?.title ? p.product.title : 'Item'))
+      .join(', ') || 'Order';
+
+    const [firstName, ...rest] = (user?.name || '').split(' ');
+    const lastName = rest.join(' ');
+    const digitsPhone = (user?.phone || '').replace(/\D/g, '').slice(-10) || '0770000000';
+    const retryOrderId = `${order._id}-${Date.now()}`;
+
+    // Fetch hash from backend
+    let hash = '';
+    let merchantIdFinal = merchantIdEnv;
+    try {
+      const hashRes = await axios.post(`${import.meta.env.VITE_API_URL || 'http://localhost:4000'}/api/payments/payhere-hash`, {
+        orderId: retryOrderId,
+        amount: amountStr,
+        currency: 'LKR'
+      });
+      hash = hashRes.data.hash;
+      if (hashRes.data.merchantId) {
+        merchantIdFinal = String(hashRes.data.merchantId).trim();
+      }
+    } catch (err) {
+      console.error('Error generating PayHere hash:', err);
+      toast.error('Failed to prepare payment. Please try again.');
+      return;
+    }
+
+    const payhereConfig = {
+      merchant_id: merchantIdFinal,
+      return_url: `${window.location.origin}/payment-success`,
+      cancel_url: `${window.location.origin}/payment-cancel`,
+      notify_url: `https://3e278933618c.ngrok-free.app/api/payments/payhere-webhook`,
+      first_name: firstName || 'Customer',
+      last_name: lastName || 'User',
+      email: user?.email || 'noemail@example.com',
+      phone: digitsPhone,
+      address: 'Address',
+      city: 'City',
+      country: 'Sri Lanka',
+      order_id: retryOrderId,
+      items: items,
+      currency: 'LKR',
+      amount: amountStr,
+      hash,
+      custom_1: order._id,
+      custom_2: user?._id
+    };
+
+    const form = document.createElement('form');
+    form.method = 'POST';
+    form.action = isSandbox ? 'https://sandbox.payhere.lk/pay/checkout' : 'https://www.payhere.lk/pay/checkout';
+
+    Object.keys(payhereConfig).forEach((key) => {
+      const input = document.createElement('input');
+      input.type = 'hidden';
+      input.name = key;
+      input.value = payhereConfig[key];
+      form.appendChild(input);
+    });
+
+    document.body.appendChild(form);
+    form.submit();
+  };
+
   const getStatusColor = (status) => {
     const colors = {
       pending: 'bg-yellow-100 text-yellow-800',
@@ -157,6 +231,14 @@ const Orders = () => {
                     </div>
 
                     <div className="mt-4 flex justify-end space-x-3">
+                      {order.status === 'pending' && (
+                        <button
+                          onClick={() => initializePayHerePayment(order)}
+                          className="px-4 py-2 border border-green-300 rounded-md text-sm font-medium text-green-700 hover:bg-green-50"
+                        >
+                          Pay Now
+                        </button>
+                      )}
                       {order.status === 'pending' && (
                         <button
                           onClick={() => handleCancelOrder(order._id)}
